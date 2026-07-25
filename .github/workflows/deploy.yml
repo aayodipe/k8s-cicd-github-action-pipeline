@@ -1,0 +1,37 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1 — check out the code
+      - uses: actions/checkout@v4
+
+      # Step 2 — build and push the image tagged with the Git commit SHA
+      # --password-stdin avoids the TTY error that -p causes in CI environments
+      - name: Build and push image
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/k8s-app:${{ github.sha }} .
+          docker push ${{ secrets.DOCKER_USERNAME }}/k8s-app:${{ github.sha }}
+
+      # Step 3 — substitute IMAGE_TAG placeholder with the real image and apply
+      # sed replaces IMAGE_TAG in the manifest with the actual image built above
+      # kubectl apply creates the Deployment if it does not exist, updates it if it does
+      - name: Deploy to Kubernetes
+        run: |
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          sed -i "s|IMAGE_TAG|${{ secrets.DOCKER_USERNAME }}/k8s-app:${{ github.sha }}|g" k8s/deployment.yaml
+          kubectl --kubeconfig=kubeconfig.yaml apply -f k8s/deployment.yaml
+          kubectl --kubeconfig=kubeconfig.yaml rollout status deployment/k8s-app --timeout=120s
+
+      # Step 4 — confirm pods are running with the new image
+      # app=k8s-app matches the label defined in k8s/deployment.yaml under template.metadata.labels
+      - name: Verify
+        run: |
+          kubectl --kubeconfig=kubeconfig.yaml get pods -l app=k8s-app
+          kubectl --kubeconfig=kubeconfig.yaml rollout history deployment/k8s-app
