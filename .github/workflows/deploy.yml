@@ -19,16 +19,6 @@ jobs:
           docker build -t ${{ secrets.DOCKER_USERNAME }}/k8s-app:${{ github.sha }} .
           docker push ${{ secrets.DOCKER_USERNAME }}/k8s-app:${{ github.sha }}
           
-      - name: Update image tag in GitOps repo
-        run: |
-          git clone https://${{ secrets.GITOPS_TOKEN }}@github.com/<your-github-username>/k8s-gitops-manifests.git
-          cd k8s-gitops-manifests
-          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/k8s-app:${{ github.sha }}|" k8s/deployment.yaml
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
-          git add k8s/deployment.yaml
-          git commit -m "Update image to ${{ github.sha }}"
-          git push
       # Step 3 — substitute IMAGE_TAG placeholder with the real image and apply
       # sed replaces IMAGE_TAG in the manifest with the actual image built above
       # kubectl apply creates the Deployment if it does not exist, updates it if it does
